@@ -21,10 +21,15 @@ namespace tflite {
 namespace reference_integer_ops {
 
 // Quantized softmax with int8 input and int8/int16 output.
-template <typename OutputT = int8_t>
+// Quantized softmax with int16 input and int16 output, zero_point=0.
+template <typename InputT, typename OutputT>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const int8* input_data,
+                    const RuntimeShape& input_shape, const InputT* input_data,
                     const RuntimeShape& output_shape, OutputT* output_data) {
+  bool input_type_check = (std::is_same<InputT, int8_t>::value ||
+                           std::is_same<InputT, int16_t>::value);
+  TFLITE_DCHECK(input_type_check);
+
   const int32_t input_beta_multiplier = params.input_multiplier;
   const int32_t input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
@@ -47,8 +52,16 @@ inline void Softmax(const SoftmaxParams& params,
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
+  int32_t in_min_num = std::numeric_limits<InputT>::min();
+  int32_t out_min_num = std::is_same<OutputT, int16_t>::value
+                            ? 0
+                            : std::numeric_limits<OutputT>::min();
+  int32_t max_num = std::numeric_limits<OutputT>::max();
+  int output_num_bits =
+      std::is_same<OutputT, int16_t>::value ? 15 : (sizeof(OutputT) * 8);
+
   for (int i = 0; i < outer_size; ++i) {
-    int8 max_in_row = -128;
+    InputT max_in_row = in_min_num;
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
@@ -85,17 +98,13 @@ inline void Softmax(const SoftmaxParams& params,
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
         const int32_t unsat_output = gemmlowp::RoundingDivideByPOT(
             (shifted_scale * exp_in_0).raw(),
-            num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
+            num_bits_over_unit + 31 - output_num_bits);
         // TODO(b/148494470): Handle int32 shifts properly:
-        const int32_t shifted_output =
-            unsat_output -
-            (static_cast<int32_t>(std::numeric_limits<OutputT>::max()) + 1);
-        output_data[i * depth + c] = static_cast<OutputT>(std::max(
-            std::min(shifted_output,
-                     static_cast<int32_t>(std::numeric_limits<OutputT>::max())),
-            static_cast<int32_t>(std::numeric_limits<OutputT>::min())));
+        const int32_t shifted_output = unsat_output + out_min_num;
+        output_data[i * depth + c] = static_cast<OutputT>(
+            std::max(std::min(shifted_output, max_num), out_min_num));
       } else {
-        output_data[i * depth + c] = std::numeric_limits<OutputT>::min();
+        output_data[i * depth + c] = out_min_num;
       }
     }
   }

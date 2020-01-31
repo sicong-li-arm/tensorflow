@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
+#include <cstdlib>
+
 namespace tflite {
 namespace ops {
 namespace micro {
@@ -42,14 +44,15 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     TfLiteTensor* output,
                                     const TfLiteSoftmaxParams* params,
                                     OpData* data) {
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
+      input->type == kTfLiteInt16) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       if (output->type == kTfLiteInt16) {
-        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
-        // NOTE: Current int16 softmax output does not require symmetric scaling
-        // - so no need to verify scale here.
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+        TF_LITE_ENSURE(context,
+                       std::fabs(output->params.scale - 1.f / 32768) < 0.001);
       } else {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
         TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
@@ -114,7 +117,7 @@ void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     tflite::reference_ops::Softmax(op_params, shape,
                                    GetTensorData<uint8_t>(input), shape,
                                    GetTensorData<uint8_t>(output));
-  } else {
+  } else if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_integer_ops::Softmax(
           op_params, shape, GetTensorData<int8_t>(input), shape,
@@ -124,6 +127,10 @@ void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
           op_params, shape, GetTensorData<int8_t>(input), shape,
           GetTensorData<int8_t>(output));
     }
+  } else {
+    tflite::reference_integer_ops::Softmax(op_params, shape,
+                                           GetTensorData<int16_t>(input), shape,
+                                           GetTensorData<int16_t>(output));
   }
 }
 
@@ -145,7 +152,7 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     tflite::reference_ops::Softmax(op_params, shape,
                                    GetTensorData<uint8_t>(input), shape,
                                    GetTensorData<uint8_t>(output));
-  } else {
+  } else if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_integer_ops::Softmax(
           op_params, shape, GetTensorData<int8_t>(input), shape,
@@ -155,6 +162,10 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
           op_params, shape, GetTensorData<int8_t>(input), shape,
           GetTensorData<int8_t>(output));
     }
+  } else {
+    tflite::reference_integer_ops::Softmax(op_params, shape,
+                                           GetTensorData<int16_t>(input), shape,
+                                           GetTensorData<int16_t>(output));
   }
 }
 
@@ -178,7 +189,7 @@ void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     tflite::reference_ops::Softmax(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
         GetTensorShape(output), GetTensorData<uint8_t>(output));
-  } else {
+  } else if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_integer_ops::Softmax(
           op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
@@ -188,6 +199,10 @@ void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
           op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(output), GetTensorData<int8_t>(output));
     }
+  } else {
+    tflite::reference_integer_ops::Softmax(
+        op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+        GetTensorShape(output), GetTensorData<int16_t>(output));
   }
 }
 
@@ -224,7 +239,8 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
     }
     case kTfLiteInt8:
-    case kTfLiteUInt8: {
+    case kTfLiteUInt8:
+    case kTfLiteInt16: {
       if (NumDimensions(input) == 1) {
         Softmax1DQuantized(input, output, params, data);
         return kTfLiteOk;
@@ -243,10 +259,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
     }
     default:
-      context->ReportError(
-          context,
-          "Only float32, uint8_t and int8_t supported currently, got %d.",
-          input->type);
+      context->ReportError(context,
+                           "Only float32, uint8_t, int8_t and int16_t "
+                           "supported currently, got %d.",
+                           input->type);
       return kTfLiteError;
   }
 }
