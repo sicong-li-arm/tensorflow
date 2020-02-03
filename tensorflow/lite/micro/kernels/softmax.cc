@@ -114,7 +114,7 @@ void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     tflite::reference_ops::Softmax(op_params, shape,
                                    GetTensorData<uint8_t>(input), shape,
                                    GetTensorData<uint8_t>(output));
-  } else {
+  } else if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_integer_ops::Softmax(
           op_params, shape, GetTensorData<int8_t>(input), shape,
@@ -122,6 +122,16 @@ void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     } else {
       tflite::reference_integer_ops::Softmax(
           op_params, shape, GetTensorData<int8_t>(input), shape,
+          GetTensorData<int8_t>(output));
+    }
+  } else {
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int16_t>(input), shape,
+          GetTensorData<int16_t>(output));
+    } else {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int16_t>(input), shape,
           GetTensorData<int8_t>(output));
     }
   }
@@ -145,7 +155,7 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     tflite::reference_ops::Softmax(op_params, shape,
                                    GetTensorData<uint8_t>(input), shape,
                                    GetTensorData<uint8_t>(output));
-  } else {
+  } else if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_integer_ops::Softmax(
           op_params, shape, GetTensorData<int8_t>(input), shape,
@@ -153,6 +163,16 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     } else {
       tflite::reference_integer_ops::Softmax(
           op_params, shape, GetTensorData<int8_t>(input), shape,
+          GetTensorData<int8_t>(output));
+    }
+  } else {
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int16_t>(input), shape,
+          GetTensorData<int16_t>(output));
+    } else {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int16_t>(input), shape,
           GetTensorData<int8_t>(output));
     }
   }
@@ -178,7 +198,7 @@ void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     tflite::reference_ops::Softmax(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
         GetTensorShape(output), GetTensorData<uint8_t>(output));
-  } else {
+  } else if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_integer_ops::Softmax(
           op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
@@ -186,6 +206,16 @@ void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
     } else {
       tflite::reference_integer_ops::Softmax(
           op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+    }
+  } else {
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_integer_ops::Softmax(
+          op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+    } else {
+      tflite::reference_integer_ops::Softmax(
+          op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
           GetTensorShape(output), GetTensorData<int8_t>(output));
     }
   }
@@ -224,7 +254,8 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
     }
     case kTfLiteInt8:
-    case kTfLiteUInt8: {
+    case kTfLiteUInt8:
+    case kTfLiteInt16: {
       if (NumDimensions(input) == 1) {
         Softmax1DQuantized(input, output, params, data);
         return kTfLiteOk;
@@ -245,7 +276,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     default:
       context->ReportError(
           context,
-          "Only float32, uint8_t and int8_t supported currently, got %d.",
+          "Only float32, uint8_t, int8_t and int16_t supported currently, got %d.",
           input->type);
       return kTfLiteError;
   }
