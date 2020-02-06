@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_SOFTMAX_H_
 
 #include "tensorflow/lite/kernels/internal/common.h"
+#include <iostream>
 
 namespace tflite {
 namespace reference_integer_ops {
@@ -28,13 +29,14 @@ template<> struct OutputParams<int8> {
 template<> struct OutputParams<int16> {
   static const int output_num_bits = 16 - 1;
   static const int32_t output_min = 0;
+  /** static const int32_t output_min = 0; */
 };
 
 // Quantized softmax with int8/int16 integer input and output.
-template <typename T>
+template <typename InputT, typename OutputT>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const T* input_data,
-                    const RuntimeShape& output_shape, T* output_data) {
+                    const RuntimeShape& input_shape, const InputT* input_data,
+                    const RuntimeShape& output_shape, OutputT* output_data) {
   const int32_t input_beta_multiplier = params.input_multiplier;
   const int32_t input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
@@ -57,11 +59,13 @@ inline void Softmax(const SoftmaxParams& params,
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  int32_t min_num = std::numeric_limits<T>::min();
-  int32_t max_num = std::numeric_limits<T>::max();
-  OutputParams<T> output_params;
+  int32_t in_min_num = std::numeric_limits<InputT>::min();
+  int32_t in_max_num = std::numeric_limits<InputT>::max();
+  int32_t out_min_num = std::numeric_limits<OutputT>::min();
+  int32_t out_max_num = std::numeric_limits<OutputT>::max();
+  OutputParams<OutputT> output_params;
   for (int i = 0; i < outer_size; ++i) {
-    T max_in_row = min_num;
+    InputT max_in_row = in_min_num;
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
@@ -85,6 +89,7 @@ inline void Softmax(const SoftmaxParams& params,
     FixedPoint0 shifted_scale = FixedPoint0::FromRaw(GetReciprocal(
         sum_of_exps.raw(), kAccumulationIntegerBits, &num_bits_over_unit));
 
+    std::cout << diff_min << " " << input_beta_multiplier << " " << input_beta_left_shift << std::endl;
     for (int c = 0; c < depth; ++c) {
       int32_t input_diff =
           static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
@@ -101,9 +106,10 @@ inline void Softmax(const SoftmaxParams& params,
         const int32_t shifted_output = unsat_output + output_params.output_min;
 
         output_data[i * depth + c] =
-            static_cast<T>(std::max(std::min(shifted_output, max_num), min_num));
+            static_cast<OutputT>(std::max(std::min(shifted_output, out_max_num), out_min_num));
 
       } else {
+        std::cout << "input_diff too small" << std::endl;
         output_data[i * depth + c] = output_params.output_min;
       }
     }

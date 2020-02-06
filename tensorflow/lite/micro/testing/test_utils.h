@@ -77,6 +77,19 @@ inline uint8_t F2Q(const float value, const float min, const float max) {
   return result;
 }
 
+// Converts a float value into an signed sixteen-bit quantized value.
+inline int16_t F2Q16S(const float value, const float min, const float max) {
+  int32_t result = ZeroPointFromMinMax<uint16_t>(min, max) +
+                   (value / ScaleFromMinMax<uint16_t>(min, max)) + 0.5f;
+  if (result < std::numeric_limits<uint16_t>::min()) {
+    result = std::numeric_limits<uint16_t>::min();
+  }
+  if (result > std::numeric_limits<uint16_t>::max()) {
+    result = std::numeric_limits<uint16_t>::max();
+  }
+  return result + std::numeric_limits<int16_t>::min();
+}
+
 // Converts a float value into a signed eight-bit quantized value.
 inline int8_t F2QS(const float value, const float min, const float max) {
   return F2Q(value, min, max) + std::numeric_limits<int8_t>::min();
@@ -173,6 +186,31 @@ inline TfLiteTensor CreateQuantizedTensor(const int8_t* data,
 }
 
 inline TfLiteTensor CreateQuantizedTensor(std::initializer_list<int8_t> data,
+                                          TfLiteIntArray* dims,
+                                          const char* name, float min,
+                                          float max, bool is_variable = false) {
+  return CreateQuantizedTensor(data.begin(), dims, name, min, max, is_variable);
+}
+
+inline TfLiteTensor CreateQuantizedTensor(const int16_t* data,
+                                          TfLiteIntArray* dims,
+                                          const char* name, float min,
+                                          float max, bool is_variable = false) {
+  TfLiteTensor result;
+  result.type = kTfLiteInt16;
+  result.data.i16 = const_cast<int16_t*>(data);
+  result.dims = dims;
+  result.params = {ScaleFromMinMax<int16_t>(min, max),
+                   ZeroPointFromMinMax<int16_t>(min, max)};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(int16_t);
+  result.allocation = nullptr;
+  result.name = name;
+  result.is_variable = is_variable;
+  return result;
+}
+
+inline TfLiteTensor CreateQuantizedTensor(std::initializer_list<int16_t> data,
                                           TfLiteIntArray* dims,
                                           const char* name, float min,
                                           float max, bool is_variable = false) {

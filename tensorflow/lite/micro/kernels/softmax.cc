@@ -42,12 +42,12 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     TfLiteTensor* output,
                                     const TfLiteSoftmaxParams* params,
                                     OpData* data) {
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       if (output->type == kTfLiteInt16) {
-        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
         // NOTE: Current int16 softmax output does not require symmetric scaling
         // - so no need to verify scale here.
       } else {
