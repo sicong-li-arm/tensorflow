@@ -85,8 +85,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     } else if (input.type == TensorType_INT8) {
       output_ = AddOutput({TensorType_INT8, {}, 0, 0, 1. / 256, -128});
     } else if (input.type == TensorType_INT16) {
-      output_ = AddOutput({TensorType_INT16, {}, 0, 0,
-                           1.0f/(std::numeric_limits<int16_t>::max() + 1), 0});
+      output_ = AddOutput({TensorType_INT16, {}, 0, 0, 1. / 32768, 0});
     } else {
       output_ = AddOutput({input.type, {}});
     }
@@ -1003,10 +1002,8 @@ TEST(QuantizedActivationsOpTest, Softmax1DInt16ZeroElement) {
                                 /*input=*/{TensorType_INT16, {1}, -1, 1});
   m.SetInput<int16_t>({0});
   m.Invoke();
-  EXPECT_THAT(
-      m.GetDequantizedOutput<int16_t>(),
-      ElementsAreArray(ArrayFloatNear({1},
-                                      kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({1}, kQuantizedToleranceInt16)));
 }
 
 TEST(QuantizedActivationsOpTest, Softmax2DInt16) {
@@ -1058,7 +1055,7 @@ TEST(QuantizedActivationsOpTest, Softmax3DInt16) {
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      .0158756, .000039, .1173, .866779,  //
+                      .0158756, .000039, .1173, .866779,   //
                       .00091, .0000061, .998959, .000123,  //
                   },
                   kQuantizedTolerance)));
@@ -1077,10 +1074,10 @@ TEST(QuantizedActivationsOpTest, Softmax3DInt16) {
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.997527, 0.0024726,  //
-                      0.11920292, 0.88079707,  //
-                      0.99330715, 0.00669285,  //
-                      0.999876605, 0.000123395,   //
+                      0.997527, 0.0024726,       //
+                      0.11920292, 0.88079707,    //
+                      0.99330715, 0.00669285,    //
+                      0.999876605, 0.000123395,  //
                   },
                   kQuantizedTolerance)));
 }

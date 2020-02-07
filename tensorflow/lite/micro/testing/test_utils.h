@@ -291,6 +291,13 @@ inline TfLiteTensor CreateQuantized32Tensor(const int32_t* data,
   return result;
 }
 
+inline TfLiteTensor CreateQuantized16Tensor(std::initializer_list<int16_t> data,
+                                            TfLiteIntArray* dims,
+                                            const char* name, float scale,
+                                            bool is_variable = false) {
+  return CreateQuantizedTensor(data.begin(), dims, name, scale, is_variable);
+}
+
 inline TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
                                             TfLiteIntArray* dims,
                                             const char* name, float scale,

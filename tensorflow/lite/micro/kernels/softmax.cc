@@ -42,7 +42,8 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     TfLiteTensor* output,
                                     const TfLiteSoftmaxParams* params,
                                     OpData* data) {
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
+      input->type == kTfLiteInt16) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
@@ -274,10 +275,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
     }
     default:
-      context->ReportError(
-          context,
-          "Only float32, uint8_t, int8_t and int16_t supported currently, got %d.",
-          input->type);
+      context->ReportError(context,
+                           "Only float32, uint8_t, int8_t and int16_t "
+                           "supported currently, got %d.",
+                           input->type);
       return kTfLiteError;
   }
 }
