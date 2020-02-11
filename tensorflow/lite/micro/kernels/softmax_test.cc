@@ -23,25 +23,6 @@ namespace tflite {
 namespace testing {
 namespace {
 
-constexpr float kQuantizedToleranceInt16 = 2 * (1. / 4096);
-
-template <typename T>
-inline void Dequantize(const int32_t zero_point, const double scale,
-                       std::initializer_list<int> input_dims_data,
-                       const T* input_data,
-                       std::initializer_list<int> output_dims_data,
-                       float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
-  const int flat_size = ElementCount(*output_dims);
-
-  for (int i = 0; i < flat_size; i++) {
-    const int32_t val = static_cast<int32_t>(input_data[i]);
-    const float result = static_cast<float>(scale * (val - zero_point));
-    output_data[i] = result;
-  }
-}
-
 void TestSoftmaxFloat(std::initializer_list<int> input_dims_data,
                       std::initializer_list<float> input_data,
                       std::initializer_list<float> expected_output_data,
@@ -169,84 +150,6 @@ void TestSoftmaxQuantized(std::initializer_list<int> input_dims_data,
   }
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[i], output_data[i]);
-  }
-}
-
-template <typename InputT, typename OutputT>
-void TestSoftmaxQuantizedDequantizedCheck(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<InputT> input_data, float input_min, float input_max,
-    std::initializer_list<float> expected_output_data_float,
-    std::initializer_list<int> output_dims_data, float output_min,
-    float output_max, float tolerance) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
-
-  OutputT quant_output_data[output_dims_count];
-  float dequant_output_data[output_dims_count];
-
-  constexpr int inputs_size = 1;
-  constexpr int outputs_size = 1;
-  constexpr int tensors_size = inputs_size + outputs_size;
-  constexpr int output_idx = 1;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(quant_output_data, output_dims, "output_tensor",
-                            output_min, output_max),
-  };
-
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
-
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  TfLiteSoftmaxParams builtin_data = {1.0f};
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
-
-  int inputs_array_data[] = {1, 0};
-  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 1};
-  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
-
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
-
-  // Dequantize the output
-  const float output_scale = tensors[output_idx].params.scale;
-  const int32_t output_zero_point = tensors[output_idx].params.zero_point;
-  Dequantize(output_zero_point, output_scale, input_dims_data,
-             quant_output_data, output_dims_data, dequant_output_data);
-  for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data_float.begin()[i],
-                              dequant_output_data[i], tolerance);
   }
 }
 
@@ -418,72 +321,6 @@ TF_LITE_MICRO_TEST(
        F2Q16S(0.636408647, output_min, output_max)},
       {2, 1, 5},  // Output shape.
       output_min, output_max, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestInQuantized16SignedOutQuantized8Signed) {
-  using tflite::testing::F2Q16S;
-  using tflite::testing::F2QS;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float output_min = 0.0f;
-  const float output_max = (255.0f / 256.0f);
-  const int output_dims_count = 5;
-  int8_t output_data[output_dims_count];
-  tflite::testing::TestSoftmaxQuantized(  //
-      {2, 1, 5},                          // Input shape.
-      {F2Q16S(1.0, input_min, input_max), F2Q16S(2.0, input_min, input_max),
-       F2Q16S(3.0, input_min, input_max), F2Q16S(4.0, input_min, input_max),
-       F2Q16S(5.0, input_min, input_max)},
-      input_min, input_max,  // Input quantized range.
-      {                      // Expected results.
-       F2QS(0.011656231, output_min, output_max),
-       F2QS(0.031684921, output_min, output_max),
-       F2QS(0.086128544, output_min, output_max),
-       F2QS(0.234121657, output_min, output_max),
-       F2QS(0.636408647, output_min, output_max)},
-      {2, 1, 5},               // Output shape.
-      output_min, output_max,  // Output quantized range.
-      output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestQuantized16SignedDequantizedCheck) {
-  using tflite::testing::F2Q16S;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float output_min = -1;
-  const float output_max = 1;
-  const int output_dims_count = 10;
-  int16_t output_data[output_dims_count];
-  tflite::testing::TestSoftmaxQuantizedDequantizedCheck<int16_t, int16_t>(  //
-      {2, 2, 5},  // Input shape.
-      {F2Q16S(-10.0, input_min, input_max), F2Q16S(-4.0, input_min, input_max),
-       F2Q16S(-6.0, input_min, input_max), F2Q16S(-1.0, input_min, input_max),
-       F2Q16S(-5.0, input_min, input_max),
-       // b = 1
-       F2Q16S(15.0, input_min, input_max), F2Q16S(16.0, input_min, input_max),
-       F2Q16S(17.0, input_min, input_max), F2Q16S(18.0, input_min, input_max),
-       F2Q16S(19.0, input_min, input_max)},
-      input_min, input_max,  // Input quantized range.
-      {
-          // Expected results.
-          // b = 0
-          1.14803656e-04,
-          4.63151002e-02,
-          6.26806721e-03,
-          9.30263656e-01,
-          1.70383732e-02,
-          // b = 1
-          0.011656231,
-          0.031684921,
-          0.086128544,
-          0.234121657,
-          0.636408647,
-      },
-      {2, 2, 5},               // Output shape.
-      output_min, output_max,  // Output quantized range.
-      tflite::testing::kQuantizedToleranceInt16);
 }
 
 TF_LITE_MICRO_TESTS_END
