@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
+#include <cstdlib>
+
 namespace tflite {
 namespace ops {
 namespace micro {
@@ -49,8 +51,8 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
     } else {
       if (output->type == kTfLiteInt16) {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-        // NOTE: Current int16 softmax output does not require symmetric scaling
-        // - so no need to verify scale here.
+        TF_LITE_ENSURE(context,
+                       std::fabs(output->params.scale - 1.f / 32768) < 0.001);
       } else {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
         TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
