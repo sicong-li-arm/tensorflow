@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -51,6 +52,13 @@ inline void print_output_data(TfLiteTensor* output) {
 }
 #endif
 
+template <typename T>
+void check_output_elem(TfLiteTensor* output, const T* expected_output_data,
+                       const int index) {
+  TF_LITE_MICRO_EXPECT_EQ(tflite::GetTensorData<T>(output)[index],
+                          expected_output_data[index]);
+}
+
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestInvoke) {
@@ -73,7 +81,17 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   interpreter.AllocateTensors();
 
   TfLiteTensor* input = interpreter.input(0);
-  memcpy(input->data.uint8, input_data, input->bytes);
+  memcpy(input->data.data, input_data, input->bytes);
+  if (!input_use_default_quant_params) {
+    input->params.scale = input_scale;
+    input->params.zero_point = input_zero_point;
+  }
+
+  TfLiteTensor* output = interpreter.output(0);
+  if (!output_use_default_quant_params) {
+    output->params.scale = output_scale;
+    output->params.zero_point = output_zero_point;
+  }
 
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
@@ -81,15 +99,13 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
-  TfLiteTensor* output = interpreter.output(0);
-
 #ifdef NUM_BYTES_TO_PRINT
   print_output_data(output);
 #endif
 
 #ifndef NO_COMPARE_OUTPUT_DATA
-  for (int i = 0; i < output->bytes; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(output->data.uint8[i], expected_output_data[i]);
+  for (int i = 0; i < tflite::ElementCount(*(output->dims)); ++i) {
+    check_output_elem(output, expected_output_data, i);
   }
 #endif
   TF_LITE_REPORT_ERROR(error_reporter, "Ran successfully\n");
